@@ -1,0 +1,58 @@
+name: Build ZeroProc OP9R APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Unpack project ZIP
+        run: |
+          for f in *.zip; do
+            unzip -o "$f" -d project
+            break
+          done
+          python3 - <<'EOF'
+          from pathlib import Path
+          for p in Path("project/app/src/main/java").rglob("*.kt"):
+              s = p.read_text()
+              for old, new in [
+                  ('"ISO\n', '"ISO\\n'),
+                  ('"SHUTTER\n', '"SHUTTER\\n'),
+                  ('"FOCUS\n', '"FOCUS\\n'),
+                  ('"WB\n', '"WB\\n'),
+                  ('${lens.id}\n"', '${lens.id}\\n"'),
+                  ('$rawDesc\n"', '$rawDesc\\n"'),
+              ]:
+                  s = s.replace(old, new)
+              p.write_text(s)
+          EOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.7'
+          cache-provider: basic
+
+      - name: Build Debug APK
+        working-directory: ./project
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ZeroProc-OP9R-APK
+          path: project/app/build/outputs/apk/debug/app-debug.apk
